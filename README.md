@@ -1,5 +1,5 @@
 # Food Network API CLI
-A CLI for managing API keys for the Food Network API
+A CLI for managing API keys for the [Food Network API](https://github.com/iparkerhodge/food-network-api)
 
 #### Requirements
 This project requires Ruby to run.
