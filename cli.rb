@@ -37,6 +37,23 @@ module FoodNetworkCli
       end
     end
 
+    def login
+      login_form until @complete
+
+      puts
+      table = TTY::Table.new(['API Key ID', 'Created On', 'Status'], [])
+      @api_keys.each do |k|
+        table << [
+          k[:id],
+          k[:created_at],
+          k[:deleted_at].nil? ? 'Active' : "Deleted on #{k[:deleted_at]}"
+        ]
+      end
+      renderer = TTY::Table::Renderer::ASCII.new(table)
+      puts renderer.render
+      new_key_form
+    end
+
     ###############
     #    FORMS    #
     ###############
@@ -53,6 +70,20 @@ module FoodNetworkCli
       @complete = true
     end
 
+    def login_form
+      puts @error if @error
+      @email = @prompt.ask('Email:')
+      @password = @prompt.mask('Password:')
+
+      success = submit_login
+
+      if success
+        @complete = true
+      else
+        false
+      end
+    end
+
     def create_key
       puts
       continue = @prompt.yes?('Would you like to create an API key for the Food Network API?')
@@ -64,6 +95,18 @@ module FoodNetworkCli
         puts success ? api_key_message(@api_key) : @error
       else
         puts 'Okay, then there is nothing left to do. Restart the program when you would like to login and create an API key.'
+      end
+    end
+
+    def new_key_form
+      puts
+      res = @prompt.yes?('Would you like to delete your old API key and receive a new one?')
+      if res
+        active_key = @api_keys.find { |k| k[:deleted_at].nil? }
+        success = delete_key_and_retrieve(active_key)
+        puts success ? api_key_message(@api_key) : @error
+      else
+        puts 'Shutting down...'
       end
     end
 
@@ -107,6 +150,51 @@ module FoodNetworkCli
       end
     end
 
+    def submit_login
+      uri = URI("#{API_BASE_URL}/login")
+
+      Net::HTTP.start(uri.host, uri.port,
+                      use_ssl: uri.scheme == 'https',
+                      verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
+        request = Net::HTTP::Post.new uri.request_uri
+        request.basic_auth @email, @password
+
+        res = http.request request
+
+        if res.is_a?(Net::HTTPSuccess)
+          data = JSON.parse(res.body).to_h.transform_keys(&:to_sym)
+          @user = data[:user].transform_keys!(&:to_sym)
+          @api_keys = @user[:api_keys].map { |k| k.transform_keys!(&:to_sym) }
+          true
+        else
+          @error = 'Unable to login. Please try again.'
+          false
+        end
+      end
+    end
+
+    def delete_key_and_retrieve(key)
+      uri = URI("#{API_BASE_URL}/api-keys/#{key[:id]}")
+      Net::HTTP.start(uri.host, uri.port,
+                      use_ssl: uri.scheme == 'https',
+                      verify_mode: OpenSSL::SSL::VERIFY_NONE) do |http|
+        request = Net::HTTP::Delete.new uri.request_uri
+        request.basic_auth @email, @password
+
+        res = http.request request
+
+        if res.is_a?(Net::HTTPSuccess)
+          data = JSON.parse(res.body)
+          data.transform_keys!(&:to_sym)
+          @api_key = data[:token]
+          true
+        else
+          @error = 'Unable to update API keys. Please try again.'
+          false
+        end
+      end
+    end
+
     ################
     #    CHECKS    #
     ################
@@ -135,12 +223,12 @@ module FoodNetworkCli
     #    ERRORS    #
     ################
     def email_error
-      @error = 'Please enter a valid email'
+      @error = 'Please enter a valid email.'
       false
     end
 
     def nil_password_error
-      @error = 'Password cannot be blank'
+      @error = 'Password cannot be blank.'
       false
     end
 
@@ -152,9 +240,9 @@ module FoodNetworkCli
     def api_key_message(key)
       <<-EOM
       Your Food Network API key: #{key}
-      Keep it safe!
+      Keep it safe! You will not be able to view this key again.
 
-      If you need to view your API key again or get a new one, you can login using this program.
+      If you need to get a new API key you can login using this program to retrieve one.
       Thanks for checking out my project! -Parker
       EOM
     end
@@ -169,8 +257,8 @@ module FoodNetworkCli
   when 'register for API key'
     puts
     Action.new.register
-  when 'login to view API key'
+  when 'login to manage API keys'
     puts
-    puts 'logging in'
+    Action.new.login
   end
 end
