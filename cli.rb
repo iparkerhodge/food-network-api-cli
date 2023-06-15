@@ -10,7 +10,7 @@ module FoodNetworkCli
 
   # Handles Register and Login Actions
   class Action
-    API_BASE_URL = 'http://localhost:3000'
+    API_BASE_URL = 'https://shrouded-sierra-05908-8e88b48a34ab.herokuapp.com'
     def initialize
       @email = nil
       @password = nil
